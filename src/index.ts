@@ -3,11 +3,23 @@ import Stripe from "stripe";
 import type { Checkout as StripeType } from "stripe";
 import dotenv from "dotenv";
 import { randomUUID } from "node:crypto";
+import cors from "cors";
 
 dotenv.config();
 
 const app = express();
 const port = Number(process.env.PORT) || 3000;
+
+app.use(
+  cors({
+    origin:
+      process.env.ENV === "dev"
+        ? process.env.frontend_host_dev
+        : process.env.ENV === "staging"
+        ? process.env.frontend_host_staging
+        : process.env.frontend_host_prod,
+  })
+);
 
 app.use(express.json());
 app.use(express.urlencoded());
@@ -15,12 +27,23 @@ app.use(express.urlencoded());
 const stripe = new Stripe(
   process.env.ENV === "dev" || process.env.ENV === "staging"
     ? process.env.stripe_secret_key_dev || ""
-    : process.env.stripe_secret_key_prod || "" 
+    : process.env.stripe_secret_key_prod || ""
 );
+
+app.get("/", (req, res) => {
+  res.send("hello world");
+});
 
 app.post(
   "/create-session",
-  async (req: Request<{}, {}, { email: string , giftRecipient: string, giftCardId: string }>, res) => {
+  async (
+    req: Request<
+      {},
+      {},
+      { email: string; giftRecipient: string; giftCardId: string }
+    >,
+    res
+  ) => {
     const FRONTEND_HOST =
       process.env.ENV === "dev"
         ? process.env.frontend_host_dev
@@ -28,20 +51,22 @@ app.post(
         ? process.env.frontend_host_staging
         : process.env.frontend_host_prod;
 
-    const orderId = randomUUID();
-    const { email, giftRecipient } = req.body;
+    console.log("in create session");
 
-    if ((!email || !giftRecipient)) {
+    const orderId = randomUUID();
+    const { email, giftRecipient, giftCardId } = req.body;
+
+    if (!email || !giftRecipient || !giftCardId) {
       return res.json({
         error: true,
-        message: "no valid email/giftRecipient provided",
+        message: "no valid email/giftRecipient/giftCardId provided",
       });
     }
 
     const giftCardDetails = {
       giftCardId: 101,
       name: "£50 gift card",
-      price: 50
+      price: 50,
     };
 
     const lineItem: StripeType.SessionCreateParams.LineItem = {
@@ -54,8 +79,8 @@ app.post(
         unit_amount: Number(giftCardDetails.price) * 100,
       },
       quantity: 1,
-    }; 
-     
+    };
+
     const session = await stripe.checkout.sessions.create({
       line_items: [lineItem],
       customer_email: email,
@@ -75,3 +100,7 @@ app.post(
     });
   }
 );
+
+app.listen(port, () => {
+  console.log(`Server running on localhost:${port}`);
+});
