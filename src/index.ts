@@ -30,7 +30,7 @@ const stripe = new Stripe(
     : process.env.stripe_secret_key_prod || ""
 );
 
-app.get("/", (req, res) => {
+app.get("/", (_req, res) => {
   res.send("hello world");
 });
 
