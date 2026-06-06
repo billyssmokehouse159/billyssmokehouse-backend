@@ -21,14 +21,86 @@ app.use(
   })
 );
 
-app.use(express.json());
 app.use(express.urlencoded());
 
-const stripe = new Stripe(
+const stripeSecretKey =
   process.env.ENV === "dev" || process.env.ENV === "staging"
     ? process.env.stripe_secret_key_dev || ""
-    : process.env.stripe_secret_key_prod || ""
+    : process.env.stripe_secret_key_prod || "";
+
+const stripe = new Stripe(stripeSecretKey);
+
+
+async function fulfillCheckout(sessionId: string) {
+  // Don't put any keys in code. See https://docs.stripe.com/keys-best-practices.
+  // Find your keys at https://dashboard.stripe.com/apikeys.
+  const stripe = require("stripe")(stripeSecretKey);
+
+  console.log("Fulfilling Checkout Session " + sessionId);
+
+  // TODO: Make this function safe to run multiple times,
+  // even concurrently, with the same session ID
+
+  // TODO: Make sure fulfillment hasn't already been
+  // performed for this Checkout Session
+
+  // Retrieve the Checkout Session from the API with line_items expanded
+  const checkoutSession = await stripe.checkout.sessions.retrieve(sessionId, {
+    expand: ["line_items"],
+  });
+
+  const metadata = checkoutSession.metadata;
+  console.log("metadata", metadata);
+  // Check the Checkout Session's payment_status property
+  // to determine if fulfillment should be performed
+  if (checkoutSession.payment_status !== "unpaid") {
+    // TODO: Perform fulfillment of the line items
+    // TODO: Record/save fulfillment status for this
+    // Checkout Session
+  }
+}
+
+app.post(
+  "/stripe_webhooks",
+  express.raw({ type: "application/json" }),
+  (request, response) => {
+    console.log("T1");
+    const endpointSecret =
+      (process.env.ENV === "dev"
+        ? process.env.dev_web_hook_secret
+        : process.env.ENV === "staging"
+        ? process.env.staging_web_hook_secret
+        : process.env.prod_web_hook_secret) || ""
+        
+    const payload = request.body;
+    const sig = request.headers["stripe-signature"] || "";
+
+    let event;
+
+    try {
+      event = stripe.webhooks.constructEvent(payload, sig, endpointSecret);
+    } catch (err) {
+      console.log("Terr event", err);
+
+      //@ts-ignore
+      return response.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    console.log("T2 event", event.type);
+
+    if (
+      event.type === "checkout.session.completed" ||
+      event.type === "checkout.session.async_payment_succeeded"
+    ) {
+      fulfillCheckout(event.data.object.id);
+    }
+
+    if (event.type === "checkout.session.async_payment_failed") {
+      console.log("payment failed");
+    }
+  }
 );
+app.use(express.json());
 
 app.get("/", (_req, res) => {
   res.send("hello world");
@@ -50,8 +122,6 @@ app.post(
         : process.env.ENV === "staging"
         ? process.env.frontend_host_staging
         : process.env.frontend_host_prod;
-
-    console.log("in create session");
 
     const orderId = randomUUID();
     const { email, giftRecipient, giftCardId } = req.body;
@@ -101,6 +171,18 @@ app.post(
   }
 );
 
+
+
+
+
+
 app.listen(port, () => {
   console.log(`Server running on localhost:${port}`);
 });
+
+
+//stripe listen --forward-to localhost:3000/stripe_webhooks
+//stripe login
+//stripe listen --forward-to http://localhost:3000/stripe_webhooks
+//stripe trigger checkout.session.completed
+//stripe listen --events checkout.session.completed --forward-to http://localhost:3000/stripe_webhooks
