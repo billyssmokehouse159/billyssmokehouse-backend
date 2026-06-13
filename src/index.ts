@@ -102,10 +102,10 @@ app.get("/", (_req, res) => {
 
 type CreateSessionParams = {
   email: string;
+  senderName: string;
+  giftRecipientName: string;
   giftRecipientEmail: string;
   giftCardId: string;
-  senderName: string;
-  recipientName: string;
 };
 app.post(
   "/create-session",
@@ -118,20 +118,25 @@ app.post(
         : process.env.frontend_host_prod;
 
     const orderId = randomUUID();
-    const { email, giftRecipientEmail, giftCardId, senderName, recipientName } =
-      req.body;
+    const {
+      email,
+      giftRecipientEmail,
+      giftCardId,
+      senderName,
+      giftRecipientName,
+    } = req.body;
 
     if (
       !email ||
       !giftRecipientEmail ||
       !giftCardId ||
       !senderName ||
-      !recipientName
+      !giftRecipientName
     ) {
       return res.json({
         error: true,
         message:
-          "no valid email/giftRecipient/giftCardId/senderName/recipientName provided",
+          "no valid email/giftRecipient/giftCardId/senderName/giftRecipientName provided",
       });
     }
 
@@ -163,7 +168,7 @@ app.post(
         orderId,
         senderName,
         email,
-        recipientName,
+        giftRecipientName,
         giftRecipientEmail,
         giftCardDetailsId: giftCardDetails.giftCardId,
         giftCardName: giftCardDetails.name,
