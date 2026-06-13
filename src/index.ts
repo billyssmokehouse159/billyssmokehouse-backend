@@ -30,7 +30,6 @@ const stripeSecretKey =
 
 const stripe = new Stripe(stripeSecretKey);
 
-
 async function fulfillCheckout(sessionId: string) {
   // Don't put any keys in code. See https://docs.stripe.com/keys-best-practices.
   // Find your keys at https://dashboard.stripe.com/apikeys.
@@ -64,14 +63,13 @@ app.post(
   "/stripe_webhooks",
   express.raw({ type: "application/json" }),
   (request, response) => {
-    console.log("T1");
     const endpointSecret =
       (process.env.ENV === "dev"
         ? process.env.dev_web_hook_secret
         : process.env.ENV === "staging"
         ? process.env.staging_web_hook_secret
-        : process.env.prod_web_hook_secret) || ""
-        
+        : process.env.prod_web_hook_secret) || "";
+
     const payload = request.body;
     const sig = request.headers["stripe-signature"] || "";
 
@@ -80,13 +78,9 @@ app.post(
     try {
       event = stripe.webhooks.constructEvent(payload, sig, endpointSecret);
     } catch (err) {
-      console.log("Terr event", err);
-
       //@ts-ignore
       return response.status(400).send(`Webhook Error: ${err.message}`);
     }
-
-    console.log("T2 event", event.type);
 
     if (
       event.type === "checkout.session.completed" ||
@@ -106,16 +100,16 @@ app.get("/", (_req, res) => {
   res.send("hello world");
 });
 
+type CreateSessionParams = {
+  email: string;
+  giftRecipientEmail: string;
+  giftCardId: string;
+  senderName: string;
+  recipientName: string;
+};
 app.post(
   "/create-session",
-  async (
-    req: Request<
-      {},
-      {},
-      { email: string; giftRecipient: string; giftCardId: string }
-    >,
-    res
-  ) => {
+  async (req: Request<{}, {}, CreateSessionParams>, res) => {
     const FRONTEND_HOST =
       process.env.ENV === "dev"
         ? process.env.frontend_host_dev
@@ -124,15 +118,24 @@ app.post(
         : process.env.frontend_host_prod;
 
     const orderId = randomUUID();
-    const { email, giftRecipient, giftCardId } = req.body;
+    const { email, giftRecipientEmail, giftCardId, senderName, recipientName } =
+      req.body;
 
-    if (!email || !giftRecipient || !giftCardId) {
+    if (
+      !email ||
+      !giftRecipientEmail ||
+      !giftCardId ||
+      !senderName ||
+      !recipientName
+    ) {
       return res.json({
         error: true,
-        message: "no valid email/giftRecipient/giftCardId provided",
+        message:
+          "no valid email/giftRecipient/giftCardId/senderName/recipientName provided",
       });
     }
 
+    //TODO://get gift card from Mongodb
     const giftCardDetails = {
       giftCardId: 101,
       name: "£50 gift card",
@@ -158,8 +161,13 @@ app.post(
       client_reference_id: orderId,
       metadata: {
         orderId,
+        senderName,
         email,
-        giftRecipient,
+        recipientName,
+        giftRecipientEmail,
+        giftCardDetailsId: giftCardDetails.giftCardId,
+        giftCardName: giftCardDetails.name,
+        giftCardPrice: giftCardDetails.price,
       },
       success_url: `${FRONTEND_HOST}/gift_success?orderId=${orderId}&email=${email}`,
       cancel_url: `${FRONTEND_HOST}/gift_card?cancelled=true`,
@@ -171,15 +179,9 @@ app.post(
   }
 );
 
-
-
-
-
-
 app.listen(port, () => {
   console.log(`Server running on localhost:${port}`);
 });
-
 
 //stripe listen --forward-to localhost:3000/stripe_webhooks
 //stripe login
